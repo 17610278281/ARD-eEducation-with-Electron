@@ -11,11 +11,11 @@ ProcessMonitor.check = (manager) => {
         let processes = [];
 
         lines.forEach(line => {
-            if(line.includes("Agora_EDU_Recording_SDK_for_Linux")){
+            if(line.includes("Agora_EDU2_Recording_SDK_for_Linux")){
                 let argsMap = {};
                 let trimmed = line.replace(/\s\s+/g, " ");
                 //recording session
-                logger.debug(`start processing ${trimmed}`);
+                logger.info(`start processing ${trimmed}`);
                 let line_items = trimmed.split(" ");
                 let currentKey = null;
                 for (var i = 0; i < line_items.length; i++) {

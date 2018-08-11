@@ -32,13 +32,13 @@ if [ -z "${CHANNEL_NAME}" ] || [ -z "${APP_ID}" ] || [ -z "${session_id}" ]; the
     usage
 else
     #ok to go
-    # ps aux | grep -ie  Agora_EDU_Recording_SDK_for_Linux/samples/cpp/release/bin/recorder\ --appid\ ${APP_ID}.*\ --channel\ ${CHANNEL_NAME}.*\ | awk '{print $2}' | xargs kill -s 2
+    # ps aux | grep -ie  Agora_EDU2_Recording_SDK_for_Linux/samples/cpp/release/bin/recorder\ --appid\ ${APP_ID}.*\ --channel\ ${CHANNEL_NAME}.*\ | awk '{print $2}' | xargs kill -s 2
     [ -d ./output ] || mkdir ./output
     rm -rf ./output/${APP_ID}-${CHANNEL_NAME}-${TS}
     [ -d ./output/${APP_ID}-${CHANNEL_NAME}-${TS} ] || mkdir ./output/${APP_ID}-${CHANNEL_NAME}-${TS}
     echo {\"Recording_Dir\":\"`pwd`/output/${APP_ID}-${CHANNEL_NAME}-${TS}\"} > ./output/${APP_ID}-${CHANNEL_NAME}-${TS}/cfg.json
 
-    SCRIPT="nohup ./Agora_EDU_Recording_SDK_for_Linux/samples/cpp/release/bin/recorder --appId ${APP_ID} --channel ${CHANNEL_NAME} --cfgFilePath ./output/${APP_ID}-${CHANNEL_NAME}-${TS}/cfg.json --appliteDir `pwd`/Agora_EDU_Recording_SDK_for_Linux/bin/ --channelProfile 1"
+    SCRIPT="nohup ./Agora_EDU2_Recording_SDK_for_Linux/samples/cpp/release/bin/recorder --appId ${APP_ID} --channel ${CHANNEL_NAME} --cfgFilePath ./output/${APP_ID}-${CHANNEL_NAME}-${TS}/cfg.json --appliteDir `pwd`/Agora_EDU2_Recording_SDK_for_Linux/bin/ --channelProfile 1"
     if [ -z "${CHANNEL_KEY}" ]; then
         echo "KEY_NOT_ENABLED"
     else
