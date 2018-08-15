@@ -4,6 +4,13 @@ then
   exit 1
 fi
 
+if [ ! -e ./src/sdk/librecorder.a ];
+then
+  echo "librecorder.a not found"
+  exit 1
+fi
+
+
 cd src
 node-gyp clean
 node-gyp configure
