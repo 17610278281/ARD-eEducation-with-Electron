@@ -1,28 +1,14 @@
 const logger = require("./logger").get("es");
-const monitor_logger = require('./logger').get('monitor');
 const path = require("path");
 const Utils = require("./utils");
-const exec = require("child_process").exec;
-const monitor = require("./processMonitor");
 const fs = require("fs");
+const RecordSDK = require("../record/AgoraRecordSdk");
+const exec = require("child_process").exec;
 
 class RecorderManager {
     constructor() {
-        this.signal = null;
         this.recordings = {};
     }
-
-
-    init() {
-        let manager = this;
-        return new Promise((resolve, reject) => {
-            setInterval(() => {
-                monitor.check(manager);
-            }, 10 * 1000);
-            resolve();
-        });
-    }
-
 
     findRecorders(appid, channel) {
         let manager = this;
@@ -36,61 +22,158 @@ class RecorderManager {
         return recorders;
     }
 
-    findRecorderInstance(appid, channel, pid) {
-        let manager = this;
-        let keys = Object.keys(this.recordings);
+    join(recorder, key, cfgpath) {
+        return new Promise((resolve, reject) => {
+            const { appid, channel, sdk } = recorder;
+            logger.info(`begin join channel`);
+            sdk.onEvent("error", (err, stat) => {
+                logger.info(`error: ${err} ${stat}`);
+                reject({ code: 433, message: `internal error: ${err}` });
+            });
+            sdk.onEvent("joinchannel", (channel, uid) => {
+                logger.info(`joined channel ${channel} ${uid}`);
+                resolve();
+            });
+            sdk.onEvent("userjoin", (uid) => {
+                logger.info(`userjoin ${uid}`);
+                recorder.uids.push(uid);
+                this.updateLayout(recorder);
+            });
 
-        for (let i = 0; i < keys.length; i++) {
-            let sid = keys[i];
-            let recorder = manager.recordings[sid];
-            if (recorder && recorder.appid === appid && recorder.channel === channel && recorder.pid === pid) {
-                return recorder;
-            }
+            sdk.onEvent("userleave", (uid, reason) => {
+                logger.info(`userleave ${uid} reason ${reason}`);
+                recorder.uids = recorder.uids.filter(item => item !== uid);
+                this.updateLayout(recorder);
+            });
+
+            //set dummy layout
+            this.updateLayout(recorder);
+
+
+            sdk.joinChannel(key, channel, 0, appid, cfgpath);
+        });
+    }
+
+    leave(recorder) {
+        const { sdk } = recorder;
+        sdk.onEvent("leavechannel", reason => {
+            logger.info(`leaving channel with code ${reason}`);
+        });
+
+        sdk.leaveChannel();
+        return Promise.resolve();
+    }
+
+    updateLayout(recorder) {
+        const {sdk, uids} = recorder;
+        const sliced = Object.assign([], uids).splice(0, 4);
+        let layout = {
+            "canvasWidth": 640,
+            "canvasHeight": 480,
+            "backgroundColor": "#000000",
+            "regionCount": sliced.length,
+            "regions": []
+        };
+
+        switch (sliced.length) {
+            case 0:
+                break;
+            case 1:
+                layout.regions = [{
+                    "x": 0,
+                    "y": 0,
+                    "width": 640,
+                    "height": 480,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[0]
+                }];
+                break;
+            case 2:
+                layout.regions = [{
+                    "x": 0,
+                    "y": 0,
+                    "width": 320,
+                    "height": 480,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[0]
+                }, {
+                    "x": 320,
+                    "y": 0,
+                    "width": 320,
+                    "height": 480,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[1]
+                }];
+                break;
+            case 3:
+                layout.regions = [{
+                    "x": 0,
+                    "y": 0,
+                    "width": 320,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[0]
+                }, {
+                    "x": 320,
+                    "y": 0,
+                    "width": 320,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[1]
+                }, {
+                    "x": 0,
+                    "y": 240,
+                    "width": 640,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[2]
+                }];
+                break;
+            case 4:
+                layout.regions = [{
+                    "x": 0,
+                    "y": 0,
+                    "width": 320,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[0]
+                }, {
+                    "x": 320,
+                    "y": 0,
+                    "width": 320,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[1]
+                }, {
+                    "x": 0,
+                    "y": 240,
+                    "width": 320,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[2]
+                }, {
+                    "x": 320,
+                    "y": 240,
+                    "width": 320,
+                    "height": 240,
+                    "zOrder": 1,
+                    "alpha": 1,
+                    "uid": sliced[3]
+                }];
+                break;
         }
-
-        return null;
+        sdk.setMixLayout(layout);
     }
 
-    validate(processes) {
-        let manager = this;
-        monitor_logger.info(`validating, ${processes.length} processes, ${Object.keys(this.recordings).length} recorders`);
-        //bi-direction check
-        //ps -> recording
-        processes.forEach(process => {
-            let appid = process.appId;
-            let channel = process.channel;
-            let pid = process.pid;
-
-            let recorder = manager.findRecorderInstance(appid, channel, pid);
-
-            if (recorder) {
-                if (recorder.pid !== process.pid) {
-                    logger.error(`pid not match, recorder: ${recorder.pid}, process: ${process.pid}`);
-                }
-            } else {
-                logger.error(`find redundant process: ${JSON.stringify(process)}, killing..`);
-                exec(`kill -s 2 ${process.pid}`);
-            }
-        });
-
-        //recording -> ps
-        Object.keys(this.recordings).forEach(sid => {
-            let recorder = manager.recordings[sid];
-            let appid = recorder.appid;
-            let channel = recorder.channel;
-            let pid = recorder.pid;
-
-            let process = processes.filter(item => { return item.appId === appid && item.channel === channel && item.pid === pid })[0]
-
-            if (process) {
-                //ok
-            } else {
-                logger.error(`process not running: ${JSON.stringify(process)}, removing..`);
-                delete manager.recordings[sid];
-            }
-        });
-    }
-    
     /** lifecycles */
     start(appid, channel, options) {
         let manager = this;
@@ -100,44 +183,30 @@ class RecorderManager {
             let appliteDir = path.join(__dirname, "/rec/");
             let sessionid = Utils.rand(32);
 
-
-            let script = `bash start_record_jsmpeg.sh -i ${appid} -c ${channel} -s ${sessionid}`;
-            if (key) {
-                script += ` -k ${key}`;
-            }
+            let script = `bash prepare_cfg.sh -i ${appid} -c ${channel} -s ${sessionid}`;
             logger.info(script);
 
             let folder = path.join(__dirname, `../output/${appid}-${channel}-${sessionid}/`);
-            let pid_file = path.join(__dirname, `../output/${appid}-${channel}-${sessionid}/pid`);
-            logger.info(`pid file will be generated at ${pid_file}`);
             let ts = new Date();
 
             let recorder = {
                 appid: appid,
                 channel: channel,
-                pid: null,
+                sdk: new RecordSDK(),
                 sessionid: sessionid,
                 ts: parseInt(ts.getTime() / 1000),
-                path: folder
+                path: folder,
+                uids: []
             };
             manager.recordings[sessionid] = recorder;
 
             exec(script, (error, stdout, stderr) => {
-                fs.access(pid_file, fs.constants.R_OK, (err) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        fs.readFile(pid_file, 'utf8', (err, data) => {
-                            if (err) {
-                                reject(err);
-                            } else {
-                                let pid = data.replace("\n", "");
-                                recorder.pid = pid;
-                                logger.info(`recording started: ${JSON.stringify(recorder)}`);
-                                resolve(recorder);
-                            }
-                        });
-                    }
+                this.join(recorder, key, path.join(folder, "cfg.json")).then(() => {
+                    logger.info(`recording started`);
+                    resolve(recorder);
+                }).catch(e => {
+                    logger.error(e);
+                    reject(e);
                 });
             });
         });
@@ -154,16 +223,7 @@ class RecorderManager {
             return Promise.reject("not_match_appid_channel");
         }
 
-        return new Promise((resolve, reject) => {
-            logger.info(`stopping recording ${appid} ${channel} ${sid}`);
-            var script = `bash stop_record_jsmpeg.sh -i ${appid} -c ${channel} -s ${sid}`;
-            logger.info(script);
-            exec(script, (error, stdout, stderr) => {
-                logger.info(`service stopped: ${JSON.stringify(recorder)}`);
-                delete manager.recordings[sid];
-                resolve();
-            })
-        });
+        return this.leave(recorder);
     }
 }
 
