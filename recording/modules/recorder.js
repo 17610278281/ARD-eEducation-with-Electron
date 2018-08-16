@@ -24,23 +24,29 @@ class RecorderManager {
 
     join(recorder, key, cfgpath) {
         return new Promise((resolve, reject) => {
-            const { appid, channel, sdk } = recorder;
+            const { appid, channel, sdk, sessionid } = recorder;
             logger.info(`begin join channel`);
-            sdk.onEvent("error", (err, stat) => {
+            sdk.once("error", ({err, stat}) => {
                 logger.info(`error: ${err} ${stat}`);
                 reject({ code: 433, message: `internal error: ${err}` });
             });
-            sdk.onEvent("joinchannel", (channel, uid) => {
+            sdk.on("joinchannel", ({channel, uid}) => {
                 logger.info(`joined channel ${channel} ${uid}`);
+
+                sdk.on("error", ({err, stat}) => {
+                    logger.info(`recorder stopped with code ${err} stat ${stat}`)
+                    this.stop(appid, channel, sessionid);
+                });
+                
                 resolve();
             });
-            sdk.onEvent("userjoin", (uid) => {
+            sdk.on("userjoin", ({uid}) => {
                 logger.info(`userjoin ${uid}`);
                 recorder.uids.push(uid);
                 this.updateLayout(recorder);
             });
 
-            sdk.onEvent("userleave", (uid, reason) => {
+            sdk.on("userleave", ({uid, reason}) => {
                 logger.info(`userleave ${uid} reason ${reason}`);
                 recorder.uids = recorder.uids.filter(item => item !== uid);
                 this.updateLayout(recorder);
@@ -56,7 +62,7 @@ class RecorderManager {
 
     leave(recorder) {
         const { sdk } = recorder;
-        sdk.onEvent("leavechannel", reason => {
+        sdk.on("leavechannel", ({reason}) => {
             logger.info(`leaving channel with code ${reason}`);
         });
 
@@ -206,6 +212,7 @@ class RecorderManager {
                     resolve(recorder);
                 }).catch(e => {
                     logger.error(e);
+                    this.stop(appid, channel, sessionid);
                     reject(e);
                 });
             });
@@ -223,7 +230,22 @@ class RecorderManager {
             return Promise.reject("not_match_appid_channel");
         }
 
-        return this.leave(recorder);
+        return new Promise((resolve, reject) => {
+            logger.info(`stopping recorder ${appid} ${channel} ${sid}`);
+            this.leave(recorder);
+            delete this.recordings[sid];
+            let recorderList = [];
+            Object.keys(this.recordings).forEach(key => {
+                const r = this.recordings[key];
+                const {sessionid, appid, channel} = r;
+                recorderList.push({
+                    appid: appid,
+                    channel: channel,
+                    session: sessionid
+                });
+            });
+            logger.info(`stopped recorder, remaining recorders ${JSON.stringify(recorderList)}`);
+        });
     }
 }
 

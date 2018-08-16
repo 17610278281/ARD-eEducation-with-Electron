@@ -120,6 +120,7 @@ namespace agora {
                 config.captureInterval = 1;
                 config.triggerMode = agora::linuxsdk::AUTOMATICALLY_MODE;
                 config.mixResolution = "640,480,15,500";
+                config.idleLimitSec = 5;
 
                 agora::linuxsdk::VideoMixingLayout layout = pRecording->m_agorasdk->getMixLayout();
                 std::stringstream out;
