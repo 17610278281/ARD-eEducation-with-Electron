@@ -245,6 +245,7 @@ class RecorderManager {
                 });
             });
             logger.info(`stopped recorder, remaining recorders ${JSON.stringify(recorderList)}`);
+            resolve();
         });
     }
 }
